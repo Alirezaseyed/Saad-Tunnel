@@ -15,10 +15,9 @@ This script automates the installation and configuration of `obfs4proxy`, `jq`, 
 - Ubuntu/Debian-based system
 - Root privileges
 
-## Installation
-```bash
-<(curl -Ls https://raw.githubusercontent.com/Alirezaseyed/Saad-Tunne/main/install.sh)
-```
+# Installation Script
+To install, simply run the following command on your server
+bash <(curl -Ls https://raw.githubusercontent.com/Alirezaseyed/Saad-Tunnel/main/install.sh)
 
 ## Usage
 Upon execution, the script will:
