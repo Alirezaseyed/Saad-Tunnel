@@ -1,4 +1,5 @@
 # Saad Tunnel Script
+<div align="center"><img src="https://raw.githubusercontent.com/Alirezaseyed/Saad-Tunnel/main/screenshot.jpg" width="500"></div>
 
 ## Overview
 This script automates the installation and configuration of `obfs4proxy`, `jq`, and network tunneling with `netplan` to create a secure tunnel. It provides an interactive menu for setting up IRAN or foreign servers.
