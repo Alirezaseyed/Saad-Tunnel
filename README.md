@@ -53,5 +53,5 @@ This script is open-source. Feel free to modify and distribute it as needed.
 ## Contact
 For issues or improvements, contact:
 - Telegram: [@seddalii](https://t.me/seddalii)
-- GitHub: [your-repo](https://github.com/your-repo)
+- GitHub: [my-repo](https://github.com/Alirezaseyed)
 
