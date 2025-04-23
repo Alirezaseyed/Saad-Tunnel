@@ -116,7 +116,6 @@ nebula_menu() {
 	
     nebula_core=$(check_core_status)
 
-
     echo "+--------------------------------------------------------------------+"
     echo "|                                                                    |" 
     echo "|      _           _           _          ___                        |"
@@ -129,10 +128,10 @@ nebula_menu() {
     echo "|  \  \::/ /:/   \  \::/       \  \::/        \  \:\/:/              |"
     echo "|   \__\/ /:/     \  \:\        \  \:\         \  \::/               |"
     echo "|     /__/:/       \  \:\        \  \:\         \__\/                |"
-    echo "|     \__\/         \__\/         \__\/                               |"
+    echo "|     \__\/         \__\/         \__\/                              |"
     echo "|                                                                    |" 
-    echo "+--------------------------------------------------------------------+"    
-    echo -e "| Telegram Channel : ${MAGENTA}@seddalii ${NC}| Version : ${GREEN} 1.1.9${NC} "
+    echo "+--------------------------------------------------------------------+"     
+    echo -e "| Telegram Channel : ${MAGENTA}@AminiDev ${NC}| Version : ${GREEN} 5.0.0 ${NC} "
     echo "+--------------------------------------------------------------+"  
     echo -e "|${GREEN}Server Country    |${NC} $SERVER_COUNTRY"
     echo -e "|${GREEN}Server IP         |${NC} $SERVER_IP"
@@ -146,6 +145,19 @@ nebula_menu() {
     echo -e "\033[0m"
 }
 
+find_last_tunnel_number() {
+    local last_number=0
+    for file in /etc/netplan/mramini-*.yaml; do
+        if [ -f "$file" ]; then
+            local number=$(echo "$file" | grep -o 'mramini-[0-9]*' | cut -d'-' -f2)
+            if [ "$number" -gt "$last_number" ]; then
+                last_number=$number
+            fi
+        fi
+    done
+    echo $last_number
+}
+
 install_tunnel() {
     nebula_menu "| 1  - IRAN \n| 2  - Kharej \n| 0  - Exit"
 
@@ -153,17 +165,36 @@ install_tunnel() {
 
     read -p "How many servers: " server_count
 
+    # Find the last tunnel number
+    last_number=$(find_last_tunnel_number)
+    next_number=$((last_number + 1))
+
+    echo -e "\n${GREEN}Choose IPv6 Local configuration:${NC}"
+    echo "1- Enter IPV6 Local manually (recommended)"
+    echo "2- Set IPV6 Local automatically"
+    read -p "Enter your choice: " ipv6_choice
+
     case $setup in
     1)
-        for ((i=1;i<=server_count;i++))
+        for ((i=next_number;i<next_number+server_count;i++))
         do
-            iran_setup $i
+            if [ "$ipv6_choice" = "1" ]; then
+                iran_setup $i
+            else
+                auto_ipv6="fd25:2895:dc$(printf "%02d" $i)::1"
+                iran_setup_auto $i "$auto_ipv6"
+            fi
         done
         ;;  
     2)
-        for ((i=1;i<=server_count;i++))
+        for ((i=next_number;i<next_number+server_count;i++))
         do
-            kharej_setup $i
+            if [ "$ipv6_choice" = "1" ]; then
+                kharej_setup $i
+            else
+                auto_ipv6="fd25:2895:dc$(printf "%02d" $i)::2"
+                kharej_setup_auto $i "$auto_ipv6"
+            fi
         done
         ;;
 
@@ -215,6 +246,43 @@ EOL
     echo -e "####################################"
 }
 
+iran_setup_auto() {
+    echo -e "${YELLOW}Setting up IRAN server $1${NC}"
+    
+    read -p "Enter IRAN IP    : " iran_ip
+    read -p "Enter Kharej IP  : " kharej_ip
+    
+    cat <<EOL > /etc/netplan/mramini-$1.yaml
+network:
+  version: 2
+  tunnels:
+    tunnel0858-$1:
+      mode: sit
+      local: $iran_ip
+      remote: $kharej_ip
+      addresses:
+        - $2/64
+EOL
+    netplan_setup
+    sudo netplan apply
+
+    start_obfs4
+
+    cat <<EOL > /root/connectors-$1.sh
+ping ${2%::1}::2
+EOL
+
+    chmod +x /root/connectors-$1.sh
+
+    screen -dmS connectors_session_$1 bash -c "/root/connectors-$1.sh"
+
+    echo "IRAN Server $1 setup complete."
+    echo -e "####################################"
+    echo -e "# Your IPv6 :                      #"
+    echo -e "#  $2                             #"
+    echo -e "####################################"
+}
+
 kharej_setup() {
     echo -e "${YELLOW}Setting up Kharej server $1${NC}"
     
@@ -253,6 +321,43 @@ EOL
     echo -e "####################################"
 }
 
+kharej_setup_auto() {
+    echo -e "${YELLOW}Setting up Kharej server $1${NC}"
+    
+    read -p "Enter IRAN IP    : " iran_ip
+    read -p "Enter Kharej IP  : " kharej_ip
+    
+    cat <<EOL > /etc/netplan/mramini-$1.yaml
+network:
+  version: 2
+  tunnels:
+    tunnel0858-$1:
+      mode: sit
+      local: $kharej_ip
+      remote: $iran_ip
+      addresses:
+        - $2/64
+EOL
+    netplan_setup
+    sudo netplan apply
+
+    start_obfs4
+
+    cat <<EOL > /root/connectors-$1.sh
+ping ${2%::2}::1
+EOL
+
+    chmod +x /root/connectors-$1.sh
+
+    screen -dmS connectors_session_$1 bash -c "/root/connectors-$1.sh"
+
+    echo "Kharej Server $1 setup complete."
+    echo -e "####################################"
+    echo -e "# Your IPv6 :                      #"
+    echo -e "#  $2                             #"
+    echo -e "####################################"
+}
+
 check_core_status() {
     local file_path="/etc/netplan/mramini-1.yaml"
     local status
@@ -274,21 +379,132 @@ netplan_setup() {
 
 unistall() {
     echo $'\e[32mUninstalling Nebula in 3 seconds... \e[0m' && sleep 1 && echo $'\e[32m2... \e[0m' && sleep 1 && echo $'\e[32m1... \e[0m' && sleep 1 && {
-    rm /etc/netplan/mramini*.yaml
-    rm /root/connectors-*.sh
-    pkill screen
-    clear
-    echo 'Nebula Uninstalled :(';
-    systemctl stop ping-monitor.service
-    systemctl disable ping-monitor.service
-    rm /etc/systemd/system/ping-monitor.service
-    rm /root/ping_monitor.sh
+        # Stop all screen sessions
+        pkill screen
+        
+        # Find all tunnel0858 interfaces and delete them
+        for iface in $(ip link show | grep 'tunnel0858' | awk -F': ' '{print $2}' | cut -d'@' -f1); do
+            echo -e "${YELLOW}Removing interface $iface...${NC}"
+            ip link set $iface down
+            ip link delete $iface
+        done
+        
+        # Remove netplan configuration files
+        rm -f /etc/netplan/mramini*.yaml
+        netplan apply
+        
+        # Remove connector scripts
+        rm -f /root/connectors-*.sh
+        
+        # Stop and disable ping monitor service
+        systemctl stop ping-monitor.service 2>/dev/null
+        systemctl disable ping-monitor.service 2>/dev/null
+        rm -f /etc/systemd/system/ping-monitor.service
+        rm -f /root/ping_monitor.sh
+        
+        # Kill any remaining obfs4proxy processes
+        pkill obfs4proxy
+        
+        # Remove obfs4 configuration
+        rm -rf /etc/obfs4
+        
+        # Restart networking to apply changes
+        systemctl restart systemd-networkd
+        
+        # Verify all tunnel0858 interfaces are removed
+        remaining_tunnels=$(ip link show | grep 'tunnel0858' | wc -l)
+        if [ $remaining_tunnels -gt 0 ]; then
+            echo -e "${RED}Warning: $remaining_tunnels tunnel interfaces still remain.${NC}"
+            echo -e "${YELLOW}Attempting force removal with ip command...${NC}"
+            # Force remove any remaining tunnel interfaces
+            ip link show | grep 'tunnel0858' | awk -F': ' '{print $2}' | cut -d'@' -f1 | while read iface; do
+                ip link set $iface down
+                ip link delete $iface 2>/dev/null
+            done
+        fi
+        
+        clear
+        echo -e "${GREEN}Nebula Uninstalled successfully!${NC}"
     }
     loader
 }
 
+manage_tunnels() {
+    clear
+    echo "+--------------------------------------------------------------+"
+    echo "|                    Tunnel Management                         |"
+    echo "+--------------------------------------------------------------+"
+    
+    # List all existing tunnels
+    echo -e "\n${GREEN}Existing Tunnels:${NC}"
+    ls /etc/netplan/mramini-*.yaml 2>/dev/null | while read -r file; do
+        tunnel_name=$(basename "$file" .yaml)
+        echo -e "${YELLOW}$tunnel_name${NC}"
+    done
+    
+    echo -e "\n${GREEN}Options:${NC}"
+    echo "1) Edit Tunnel"
+    echo "2) Delete Tunnel"
+    echo "0) Back to Main Menu"
+    
+    read -p "Enter your choice: " choice
+    
+    case $choice in
+        1)
+            read -p "Enter tunnel name to edit (e.g., mramini-1): " tunnel_name
+            if [ -f "/etc/netplan/$tunnel_name.yaml" ]; then
+                read -p "Enter new IRAN IP: " iran_ip
+                read -p "Enter new Kharej IP: " kharej_ip
+                read -p "Enter new IPv6 Local: " ipv6_local
+                
+                # Update the tunnel configuration
+                cat <<EOL > "/etc/netplan/$tunnel_name.yaml"
+network:
+  version: 2
+  tunnels:
+    tunnel0858-$(echo $tunnel_name | cut -d'-' -f2):
+      mode: sit
+      local: $iran_ip
+      remote: $kharej_ip
+      addresses:
+        - $ipv6_local::1/64
+EOL
+                netplan apply
+                echo -e "${GREEN}Tunnel updated successfully!${NC}"
+            else
+                echo -e "${RED}Tunnel not found!${NC}"
+            fi
+            ;;
+        2)
+            read -p "Enter tunnel name to delete (e.g., mramini-1): " tunnel_name
+            if [ -f "/etc/netplan/$tunnel_name.yaml" ]; then
+                # Stop the connector script if it exists
+                if [ -f "/root/connectors-$(echo $tunnel_name | cut -d'-' -f2).sh" ]; then
+                    pkill -f "connectors-$(echo $tunnel_name | cut -d'-' -f2).sh"
+                    rm "/root/connectors-$(echo $tunnel_name | cut -d'-' -f2).sh"
+                fi
+                
+                # Remove the tunnel configuration
+                rm "/etc/netplan/$tunnel_name.yaml"
+                netplan apply
+                echo -e "${GREEN}Tunnel deleted successfully!${NC}"
+            else
+                echo -e "${RED}Tunnel not found!${NC}"
+            fi
+            ;;
+        0)
+            return
+            ;;
+        *)
+            echo -e "${RED}Invalid choice!${NC}"
+            ;;
+    esac
+    
+    read -p "Press Enter to continue..."
+}
+
 loader() {
-    nebula_menu "| 1  - Config Tunnel \n| 2  - Unistall\n| 3  - Install BBR\n| 0  - Exit"
+    nebula_menu "| 1  - Config Tunnel \n| 2  - Unistall\n| 3  - Install BBR\n| 4  - Haproxy Menu\n| 5  - Manage Tunnels\n| 0  - Exit"
 
     read -p "Enter option number: " choice
     case $choice in
@@ -299,11 +515,20 @@ loader() {
         unistall
         ;;
     3)
-    	echo "Running BBR script..."
+        echo "Running BBR script..."
         curl -fsSL https://raw.githubusercontent.com/MrAminiDev/NetOptix/main/scripts/bbr.sh -o /tmp/bbr.sh
-	bash /tmp/bbr.sh
-	rm /tmp/bbr.sh
-	;;
+        bash /tmp/bbr.sh
+        rm /tmp/bbr.sh
+        ;;
+    4)
+        echo "Running Haproxy Menu..."
+        curl -fsSL https://raw.githubusercontent.com/MrAminiDev/NebulaTunnel/main/haproxy.sh -o /tmp/haproxy.sh
+        bash /tmp/haproxy.sh
+        rm /tmp/haproxy.sh
+        ;;
+    5)
+        manage_tunnels
+        ;;
     0)
         echo -e "${GREEN}Exiting program...${NC}"
         exit 0
@@ -316,4 +541,3 @@ loader() {
 
 init
 loader
-
